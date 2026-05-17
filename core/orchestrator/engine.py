@@ -8,12 +8,16 @@ from core.database.db import DatabaseManager
 from core.parser.target_parser import TargetParser
 from core.workflow.router import WorkflowRouter
 from core.parser.httpx_parser import HTTPXParser
+from core.parser.gobuster_parser import GobusterParser
+from core.parser.kiterunner_parser import KiterunnerParser
 
 from modules.passive.amass_scan import AmassScanner
 from modules.active.httpx_probe import HTTPXProbe
 from modules.active.nmap_scan import NmapScanner
 from modules.active.swagger_scan import SwaggerScanner
 from modules.active.graphql_scan import GraphQLScanner
+from modules.active.gobuster_scan import GobusterScanner
+from modules.active.kiterunner_scan import KiterunnerScanner
 
 console = Console()
 
@@ -67,10 +71,6 @@ class ReconEngine:
 
             for tool in missing:
                 console.print(f" - {tool}")
-
-            console.print(
-                "\n[yellow]Automatic installer not implemented yet.[/yellow]"
-            )
 
         else:
             console.print(
@@ -152,5 +152,34 @@ class ReconEngine:
         graphql_results = graphql.run()
 
         logger.info(graphql_results)
+
+        logger.info("Starting Gobuster API enumeration")
+
+        gobuster = GobusterScanner(
+            self.target_info["base_url"],
+            self.config["threads"]
+        )
+
+        gobuster_result = gobuster.run()
+
+        parsed_gobuster = GobusterParser.parse(
+            gobuster_result["stdout"]
+        )
+
+        logger.info(parsed_gobuster)
+
+        logger.info("Starting Kiterunner API discovery")
+
+        kr = KiterunnerScanner(
+            self.target_info["base_url"]
+        )
+
+        kr_result = kr.run()
+
+        parsed_kr = KiterunnerParser.parse(
+            kr_result["stdout"]
+        )
+
+        logger.info(parsed_kr)
 
         logger.info("Recon workflow initialized.")
