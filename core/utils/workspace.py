@@ -1,11 +1,12 @@
 import os
 from datetime import datetime
+from core.utils.sanitizer import sanitize_target
 
 def initialize_workspace(target):
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    safe_target = target.replace("https://", "").replace("/", "_")
+    safe_target = sanitize_target(target)
 
     scan_dir = f"scans/{safe_target}_{timestamp}"
 
