@@ -5,3 +5,4 @@ pydantic
 httpx
 aiofiles
 jinja2
+pyyaml
