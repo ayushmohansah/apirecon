@@ -8,10 +8,33 @@ GRAPHQL_PATHS = [
     "/query"
 ]
 
+GRAPHQL_INDICATORS = [
+    "errors",
+    "data",
+    "graphql"
+]
+
 class GraphQLScanner:
 
     def __init__(self, base_url):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = self._normalize(base_url)
+
+    def _normalize(self, value):
+        return value.rstrip("/")
+
+    def _is_valid_graphql(self, response):
+
+        if response.status_code >= 400:
+            return False
+
+        content_type = response.headers.get("content-type", "")
+
+        if "json" not in content_type.lower():
+            return False
+
+        body = response.text.lower()
+
+        return any(indicator in body for indicator in GRAPHQL_INDICATORS)
 
     def run(self):
 
@@ -30,14 +53,15 @@ class GraphQLScanner:
                     timeout=5
                 )
 
-                if response.status_code < 500:
+                if self._is_valid_graphql(response):
 
                     findings.append({
                         "url": url,
-                        "status_code": response.status_code
+                        "status_code": response.status_code,
+                        "source": "graphql"
                     })
 
-                    logger.info(f"Potential GraphQL endpoint discovered: {url}")
+                    logger.info(f"Valid GraphQL endpoint discovered: {url}")
 
             except Exception:
                 continue
