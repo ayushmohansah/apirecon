@@ -1,5 +1,7 @@
 import httpx
+
 from core.logging.logger import logger
+from core.parser.openapi_validator import OpenAPIValidator
 
 COMMON_SWAGGER_PATHS = [
     "/swagger",
@@ -28,15 +30,22 @@ class SwaggerScanner:
             try:
                 response = httpx.get(url, timeout=5)
 
-                if response.status_code < 400:
+                validation = OpenAPIValidator.validate(
+                    response.text,
+                    response.headers.get("content-type", "")
+                )
+
+                if validation['valid']:
 
                     findings.append({
                         "url": url,
                         "status_code": response.status_code,
-                        "content_type": response.headers.get("content-type", "")
+                        "content_type": response.headers.get("content-type", ""),
+                        "confidence": validation['confidence'],
+                        "source": "swagger"
                     })
 
-                    logger.info(f"Swagger/OpenAPI discovered: {url}")
+                    logger.info(f"Validated Swagger/OpenAPI discovered: {url}")
 
             except Exception:
                 continue
