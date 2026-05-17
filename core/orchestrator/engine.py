@@ -5,11 +5,15 @@ from core.logging.logger import logger
 from core.installer.dependency_checker import check_tools
 from core.utils.workspace import initialize_workspace
 from core.database.db import DatabaseManager
+from core.database.repositories import EndpointRepository
 from core.parser.target_parser import TargetParser
 from core.workflow.router import WorkflowRouter
 from core.parser.httpx_parser import HTTPXParser
 from core.parser.gobuster_parser import GobusterParser
 from core.parser.kiterunner_parser import KiterunnerParser
+from core.correlation.endpoint_correlator import EndpointCorrelator
+from core.reporting.json_exporter import JSONExporter
+from core.enrichment.risk_classifier import RiskClassifier
 
 from modules.passive.amass_scan import AmassScanner
 from modules.active.httpx_probe import HTTPXProbe
@@ -18,6 +22,7 @@ from modules.active.swagger_scan import SwaggerScanner
 from modules.active.graphql_scan import GraphQLScanner
 from modules.active.gobuster_scan import GobusterScanner
 from modules.active.kiterunner_scan import KiterunnerScanner
+from modules.active.js_analysis import JavaScriptAnalyzer
 
 console = Console()
 
@@ -30,6 +35,7 @@ class ReconEngine:
         self.db = None
         self.target_info = None
         self.modules = None
+        self.endpoint_repository = None
 
     def initialize(self):
 
@@ -58,6 +64,10 @@ class ReconEngine:
         self.db.initialize()
 
         self.db.insert_metadata(self.config)
+
+        self.endpoint_repository = EndpointRepository(
+            self.db
+        )
 
         logger.info("SQLite intelligence database initialized")
 
@@ -89,11 +99,21 @@ class ReconEngine:
 
         console.print(table)
 
+    def _persist_endpoints(self, endpoints):
+
+        for endpoint in endpoints:
+
+            endpoint["risk"] = RiskClassifier.classify(endpoint)
+
+            self.endpoint_repository.insert_endpoint(endpoint)
+
     def start(self):
 
         console.print(
             "\n[bold cyan]Starting reconnaissance workflow...[/bold cyan]\n"
         )
+
+        all_findings = []
 
         if self.modules["amass"]:
 
@@ -119,6 +139,11 @@ class ReconEngine:
             httpx_result["stdout"]
         )
 
+        for item in parsed_httpx:
+            item["source"] = "httpx"
+
+        all_findings.extend(parsed_httpx)
+
         logger.info(parsed_httpx)
 
         if self.modules["nmap"]:
@@ -141,6 +166,11 @@ class ReconEngine:
 
         swagger_results = swagger.run()
 
+        for item in swagger_results:
+            item["source"] = "swagger"
+
+        all_findings.extend(swagger_results)
+
         logger.info(swagger_results)
 
         logger.info("Starting GraphQL discovery")
@@ -150,6 +180,11 @@ class ReconEngine:
         )
 
         graphql_results = graphql.run()
+
+        for item in graphql_results:
+            item["source"] = "graphql"
+
+        all_findings.extend(graphql_results)
 
         logger.info(graphql_results)
 
@@ -166,6 +201,11 @@ class ReconEngine:
             gobuster_result["stdout"]
         )
 
+        for item in parsed_gobuster:
+            item["source"] = "gobuster"
+
+        all_findings.extend(parsed_gobuster)
+
         logger.info(parsed_gobuster)
 
         logger.info("Starting Kiterunner API discovery")
@@ -180,6 +220,37 @@ class ReconEngine:
             kr_result["stdout"]
         )
 
+        for item in parsed_kr:
+            item["source"] = "kiterunner"
+
+        all_findings.extend(parsed_kr)
+
         logger.info(parsed_kr)
+
+        logger.info("Starting JavaScript intelligence analysis")
+
+        js = JavaScriptAnalyzer(
+            self.target_info["base_url"]
+        )
+
+        js_findings = js.run()
+
+        all_findings.extend(js_findings)
+
+        logger.info(js_findings)
+
+        correlated = EndpointCorrelator.correlate(
+            all_findings
+        )
+
+        self._persist_endpoints(all_findings)
+
+        export_path = JSONExporter.export(
+            self.scan_dir,
+            "recon_findings.json",
+            correlated
+        )
+
+        logger.info(f"JSON findings exported: {export_path}")
 
         logger.info("Recon workflow initialized.")
