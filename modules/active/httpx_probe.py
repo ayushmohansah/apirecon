@@ -16,7 +16,8 @@ class HTTPXProbe:
             self.target,
             "-tech-detect",
             "-status-code",
-            "-title"
+            "-title",
+            "-json"
         ]
 
         result = ToolRunner.run(command)
